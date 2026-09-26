@@ -1,0 +1,470 @@
+// Parental Control MDM - Database Schema
+// SQLite compatible (enums as String, Json as String)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// PARENT
+// ============================================================
+model Parent {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  name              String
+  password          String?
+  avatar            String?
+  plan              String    @default("FREE")       // FREE | FAMILY | PREMIUM
+  emailVerified     DateTime?
+  twoFactorEnabled  Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  children          Child[]
+  alerts            Alert[]
+  messages          Message[]
+  sessions          Session[]
+  accounts          Account[]
+  subscription      Subscription?
+
+  @@map("parents")
+}
+
+// ============================================================
+// CHILD
+// ============================================================
+model Child {
+  id              String    @id @default(cuid())
+  parentId        String
+  name            String
+  age             Int
+  avatar          String?
+  grade           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  parent          Parent          @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  devices         Device[]
+  screenTimeRule  ScreenTimeRule?
+  appRules        AppRule[]
+  contentFilter   ContentFilter?
+  locations       Location[]
+  geofences       Geofence[]
+  alerts          Alert[]
+  usageLogs       UsageLog[]
+  messages        Message[]
+  timeRequests    TimeRequest[]
+  reports         Report[]
+  simCards        SimCard[]
+
+  @@map("children")
+}
+
+// ============================================================
+// DEVICE
+// ============================================================
+model Device {
+  id          String    @id @default(cuid())
+  childId     String
+  name        String
+  model       String?
+  osVersion   String?
+  status      String    @default("OFFLINE")  // ONLINE | OFFLINE | LOCKED | LOW_BATTERY
+  battery     Int?
+  storage     Int?
+  enrolledAt  DateTime  @default(now())
+  lastSeen    DateTime?
+  currentApp  String?
+
+  child       Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  locations   Location[]
+  usageLogs   UsageLog[]
+
+  @@map("devices")
+}
+
+// ============================================================
+// SCREEN TIME RULES
+// ============================================================
+model ScreenTimeRule {
+  id               String    @id @default(cuid())
+  childId          String    @unique
+  dailyLimitMins   Int       @default(120)
+  weekendLimitMins Int       @default(180)
+  bedtimeStart     String?
+  bedtimeEnd       String?
+  schoolStart      String?
+  schoolEnd        String?
+  schoolDays       String    @default("MON,TUE,WED,THU,FRI")
+  isPaused         Boolean   @default(false)
+  pausedUntil      DateTime?
+  bonusMinutes     Int       @default(0)
+  updatedAt        DateTime  @updatedAt
+
+  child            Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("screen_time_rules")
+}
+
+// ============================================================
+// APP RULES
+// ============================================================
+model AppRule {
+  id            String    @id @default(cuid())
+  childId       String
+  appName       String
+  appPackage    String
+  appIcon       String?
+  action        String    @default("ALLOW")   // ALLOW | BLOCK | LIMIT
+  timeLimitMins Int?
+  category      String    @default("OTHER")   // GAMES | SOCIAL_MEDIA | ENTERTAINMENT | EDUCATION | COMMUNICATION | UTILITIES | OTHER
+  createdAt     DateTime  @default(now())
+
+  child         Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@unique([childId, appPackage])
+  @@map("app_rules")
+}
+
+// ============================================================
+// CONTENT FILTER
+// ============================================================
+model ContentFilter {
+  id                String    @id @default(cuid())
+  childId           String    @unique
+  blockAdult        Boolean   @default(true)
+  blockViolence     Boolean   @default(true)
+  blockGambling     Boolean   @default(true)
+  blockDrugs        Boolean   @default(true)
+  blockSocialMedia  Boolean   @default(false)
+  blockGaming       Boolean   @default(false)
+  blockShopping     Boolean   @default(false)
+  safeSearch        Boolean   @default(true)
+  youtubeRestricted Boolean   @default(true)
+  blockedUrls       String    @default("")
+  allowedUrls       String    @default("")
+  filterProfile     String    @default("TWEEN")  // YOUNG_CHILD | TWEEN | TEEN | CUSTOM
+  updatedAt         DateTime  @updatedAt
+
+  child             Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("content_filters")
+}
+
+// ============================================================
+// LOCATION
+// ============================================================
+model Location {
+  id          String    @id @default(cuid())
+  deviceId    String
+  childId     String
+  latitude    Float
+  longitude   Float
+  address     String?
+  accuracy    Float?
+  speed       Float?
+  timestamp   DateTime  @default(now())
+
+  device      Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  child       Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("locations")
+}
+
+// ============================================================
+// GEOFENCE
+// ============================================================
+model Geofence {
+  id            String    @id @default(cuid())
+  childId       String
+  name          String
+  emoji         String?   @default("📍")
+  latitude      Float
+  longitude     Float
+  radius        Float     @default(200)
+  alertOnEnter  Boolean   @default(true)
+  alertOnLeave  Boolean   @default(true)
+  isActive      Boolean   @default(true)
+  scheduleStart String?
+  scheduleEnd   String?
+  scheduleDays  String    @default("MON,TUE,WED,THU,FRI,SAT,SUN")
+  createdAt     DateTime  @default(now())
+
+  child         Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("geofences")
+}
+
+// ============================================================
+// ALERTS
+// ============================================================
+model Alert {
+  id          String    @id @default(cuid())
+  parentId    String
+  childId     String
+  type        String    // SOS | GEOFENCE_ENTER | GEOFENCE_EXIT | SCREEN_TIME_LIMIT | BEDTIME_LOCK | APP_BLOCKED | APP_INSTALL | DEVICE_OFFLINE | LOW_BATTERY | UNUSUAL_USAGE | CONTENT_BLOCKED
+  severity    String    @default("INFO")  // INFO | WARNING | CRITICAL
+  title       String
+  message     String
+  extraData   String?   // JSON string for extra context
+  isRead      Boolean   @default(false)
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  parent      Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  child       Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("alerts")
+}
+
+// ============================================================
+// USAGE LOGS
+// ============================================================
+model UsageLog {
+  id           String    @id @default(cuid())
+  deviceId     String
+  childId      String
+  appName      String
+  appPackage   String
+  appIcon      String?
+  durationSecs Int
+  category     String    @default("OTHER")
+  date         DateTime  @default(now())
+
+  device       Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  child        Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("usage_logs")
+}
+
+// ============================================================
+// MESSAGES
+// ============================================================
+model Message {
+  id        String    @id @default(cuid())
+  childId   String
+  parentId  String
+  content   String
+  sentBy    String    // PARENT | CHILD
+  isRead    Boolean   @default(false)
+  sentAt    DateTime  @default(now())
+
+  child     Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  parent    Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+// ============================================================
+// TIME REQUESTS
+// ============================================================
+model TimeRequest {
+  id          String    @id @default(cuid())
+  childId     String
+  minutes     Int
+  reason      String?
+  status      String    @default("PENDING")  // PENDING | APPROVED | DENIED
+  requestedAt DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  child       Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("time_requests")
+}
+
+// ============================================================
+// REPORTS
+// ============================================================
+model Report {
+  id          String    @id @default(cuid())
+  childId     String
+  period      String    // daily | weekly | monthly
+  startDate   DateTime
+  endDate     DateTime
+  reportData  String    // JSON string
+  aiInsight   String?
+  generatedAt DateTime  @default(now())
+
+  child       Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("reports")
+}
+
+// ============================================================
+// SUBSCRIPTION
+// ============================================================
+model Subscription {
+  id          String    @id @default(cuid())
+  parentId    String    @unique
+  plan        String    @default("FREE")    // FREE | FAMILY | PREMIUM
+  status      String    @default("ACTIVE")  // ACTIVE | CANCELLED | EXPIRED | TRIAL
+  startDate   DateTime  @default(now())
+  endDate     DateTime?
+  cancelledAt DateTime?
+
+  parent      Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// ============================================================
+// NEXTAUTH
+// ============================================================
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user              Parent  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user         Parent   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================================
+// SIM CARDS
+// ============================================================
+model SimCard {
+  id              String    @id @default(cuid())
+  childId         String
+  iccid           String    @unique  // SIM serial number
+  msisdn          String?            // Phone number
+  gigsSimId       String?   @unique  // Gigs.com subscription ID
+  status          String    @default("pending") // pending | active | suspended | terminated
+  dataUsedMb      Int       @default(0)
+  dataLimitMb     Int       @default(1024)
+  activatedAt     DateTime?
+  lastSeenAt      DateTime?
+  enrollToken     String?   @unique  // QR enrollment token
+  enrollTokenExp  DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  child           Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  policy          SimPolicy?
+  locations       SimLocation[]
+  alerts          SimAlert[]
+  usageLogs       SimUsageLog[]
+
+  @@map("sim_cards")
+}
+
+// ============================================================
+// SIM POLICY
+// ============================================================
+model SimPolicy {
+  id                  String    @id @default(cuid())
+  simId               String    @unique
+  name                String    @default("Default Policy")
+  blockedCategories   String    @default("")   // comma separated
+  blockedApps         String    @default("")   // comma separated
+  allowedDomains      String    @default("")   // comma separated
+  blockedDomains      String    @default("")   // comma separated
+  schedules           String    @default("[]") // JSON array
+  isPaused            Boolean   @default(false)
+  pausedUntil         DateTime?
+  blockVpn            Boolean   @default(true)
+  blockProxy          Boolean   @default(true)
+  blockTor            Boolean   @default(true)
+  safeSearch          Boolean   @default(true)
+  youtubeRestricted   Boolean   @default(false)
+  dailyDataLimitMb    Int?
+  monthlyDataLimitMb  Int?
+  updatedAt           DateTime  @updatedAt
+
+  sim                 SimCard   @relation(fields: [simId], references: [id], onDelete: Cascade)
+
+  @@map("sim_policies")
+}
+
+// ============================================================
+// SIM LOCATION
+// ============================================================
+model SimLocation {
+  id          String    @id @default(cuid())
+  simId       String
+  latitude    Float
+  longitude   Float
+  accuracy    Float?
+  address     String?
+  source      String    @default("cell") // gps | cell | wifi
+  timestamp   DateTime  @default(now())
+
+  sim         SimCard   @relation(fields: [simId], references: [id], onDelete: Cascade)
+
+  @@map("sim_locations")
+}
+
+// ============================================================
+// SIM ALERTS
+// ============================================================
+model SimAlert {
+  id          String    @id @default(cuid())
+  simId       String
+  childId     String
+  type        String    // blocked_app_attempt | vpn_attempt | data_limit | sim_removed | sos | geofence_exit | schedule_activated | unusual_activity
+  severity    String    @default("info") // info | warning | critical
+  title       String
+  message     String
+  extraData   String?   // JSON
+  isRead      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  sim         SimCard   @relation(fields: [simId], references: [id], onDelete: Cascade)
+
+  @@map("sim_alerts")
+}
+
+// ============================================================
+// SIM USAGE LOGS
+// ============================================================
+model SimUsageLog {
+  id              String    @id @default(cuid())
+  simId           String
+  domain          String
+  appName         String?
+  category        String?
+  requestCount    Int       @default(1)
+  dataMb          Float     @default(0)
+  blocked         Boolean   @default(false)
+  date            DateTime  @default(now())
+
+  sim             SimCard   @relation(fields: [simId], references: [id], onDelete: Cascade)
+
+  @@map("sim_usage_logs")
+}
