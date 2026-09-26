@@ -16,5 +16,6 @@ export const config = {
     "/location/:path*",
     "/screen-time/:path*",
     "/devices/:path*",
+    "/sim-control/:path*",
   ],
 };
