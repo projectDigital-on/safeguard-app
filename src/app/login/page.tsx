@@ -1,15 +1,13 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Shield, Eye, EyeOff, Loader2 } from "lucide-react";
 
-function LoginForm() {
+export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,7 +30,7 @@ function LoginForm() {
       if (result?.error) {
         setError("Invalid email or password. Please try again.");
       } else {
-        router.push(callbackUrl);
+        router.push("/dashboard");
         router.refresh();
       }
     } catch {
@@ -145,17 +143,5 @@ function LoginForm() {
         </div>
       </div>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
-      <LoginForm />
-    </Suspense>
   );
 }
